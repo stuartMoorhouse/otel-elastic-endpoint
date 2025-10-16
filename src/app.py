@@ -22,7 +22,8 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter  # type: ignore[import-not-found]
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 
 # Load environment variables from .env file
@@ -36,18 +37,16 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Parse OTEL_RESOURCE_ATTRIBUTES if provided, otherwise use defaults
-resource_attributes = {"service.name": "flask-sha256-hasher"}
-otel_resource_attrs = os.getenv("OTEL_RESOURCE_ATTRIBUTES")
-if otel_resource_attrs:
-    # Parse comma-separated key=value pairs
-    for pair in otel_resource_attrs.split(","):
-        if "=" in pair:
-            key, value = pair.split("=", 1)
-            resource_attributes[key.strip()] = value.strip()
-
-# Configure OpenTelemetry
-resource = Resource.create(resource_attributes)
+# Configure OpenTelemetry Resource with explicit telemetry SDK attributes
+# These attributes help Elastic properly identify and display the service badges
+# Note: Resource.create() automatically reads OTEL_RESOURCE_ATTRIBUTES from environment
+# and merges it with any attributes we provide here
+resource = Resource.create({
+    SERVICE_NAME: "flask-sha256-hasher",
+    SERVICE_VERSION: "1.0.0",
+    ResourceAttributes.TELEMETRY_SDK_NAME: "opentelemetry",
+    ResourceAttributes.TELEMETRY_SDK_LANGUAGE: "python",
+})
 
 # Configure Trace Provider
 trace.set_tracer_provider(TracerProvider(resource=resource))
@@ -64,24 +63,32 @@ otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 if otel_endpoint:
     logger.info(f"Configuring OTLP exporters with endpoint: {otel_endpoint}")
 
-    # Configure trace exporter
+    # Configure trace exporter with low-latency settings for demo
     otlp_trace_exporter = OTLPSpanExporter()
-    span_processor = BatchSpanProcessor(otlp_trace_exporter)
+    span_processor = BatchSpanProcessor(
+        otlp_trace_exporter,
+        schedule_delay_millis=1000,  # Send every 1 second (default: 5000)
+        max_export_batch_size=128,   # Smaller batches (default: 512)
+    )
     tracer_provider.add_span_processor(span_processor)
 
-    # Configure log exporter
+    # Configure log exporter with low-latency settings for demo
     otlp_log_exporter = OTLPLogExporter()
-    log_processor = BatchLogRecordProcessor(otlp_log_exporter)
+    log_processor = BatchLogRecordProcessor(
+        otlp_log_exporter,
+        schedule_delay_millis=500,   # Send every 500ms (default: 1000)
+        max_export_batch_size=128,   # Smaller batches (default: 512)
+    )
     logger_provider.add_log_record_processor(log_processor)
 
     # Attach OpenTelemetry handler to Python logging
     handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
     logging.getLogger().addHandler(handler)
 
-    # Configure metric exporter
+    # Configure metric exporter with faster interval for demo
     metric_exporter = OTLPMetricExporter()
     metric_reader = PeriodicExportingMetricReader(
-        metric_exporter, export_interval_millis=60000  # Export every 60 seconds
+        metric_exporter, export_interval_millis=10000  # Export every 10 seconds (default: 60000)
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)

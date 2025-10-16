@@ -129,6 +129,14 @@ All telemetry data flows through OTLP (OpenTelemetry Protocol) exporters that se
 **No Separate Collector Required:**
 This app uses the "direct export" pattern - telemetry goes straight from your application to Elastic Cloud. No need to run a separate OpenTelemetry Collector process on your machine.
 
+**Low-Latency Configuration:**
+The application is configured for near real-time telemetry delivery, optimized for demos:
+- **Traces**: Exported every 1 second
+- **Logs**: Exported every 500ms
+- **Metrics**: Exported every 10 seconds
+
+Data should appear in Elastic Cloud within 1-2 seconds of generation. These settings prioritize visibility over efficiency, perfect for demonstrations.
+
 ## Viewing Observability Data in Elastic Cloud
 
 1. Log in to your Elastic Cloud Observability instance
