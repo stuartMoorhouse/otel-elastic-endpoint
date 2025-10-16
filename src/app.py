@@ -91,6 +91,9 @@ else:
         "OpenTelemetry traces and logs will not be exported. "
         "Please configure OTEL environment variables in your .env file."
     )
+    # Set up a no-op MeterProvider so Flask instrumentation works without errors
+    meter_provider = MeterProvider(resource=resource)
+    metrics.set_meter_provider(meter_provider)
 
 # Instrument Flask app (must be done after MeterProvider is configured)
 FlaskInstrumentor().instrument_app(app)
