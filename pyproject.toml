@@ -8,6 +8,7 @@ dependencies = [
     "flask>=3.0.0",
     "opentelemetry-distro[otlp]>=0.45b0",
     "opentelemetry-instrumentation-flask>=0.45b0",
+    "opentelemetry-instrumentation-system-metrics>=0.45b0",
     "python-dotenv>=1.0.0",
 ]
 
@@ -35,6 +36,10 @@ line-length = 100
 [tool.ruff]
 line-length = 100
 select = ["E", "F", "W", "I", "N"]
+
+[tool.ruff.lint.per-file-ignores]
+# OpenTelemetry uses _logs module as public API (underscore avoids conflict with stdlib logging)
+"src/app.py" = ["PLC2701"]
 
 [tool.mypy]
 python_version = "3.8"

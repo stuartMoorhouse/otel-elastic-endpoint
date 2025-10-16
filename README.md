@@ -113,6 +113,22 @@ Every hash generation creates:
 - **Logs** with request details
 - **Metrics** about the application performance
 
+## How OpenTelemetry Works in This App
+
+OpenTelemetry collects observability data from your application and sends it directly to Elastic Cloud, all within a single Python process:
+
+**In-Process Data Collection:**
+- **Traces**: The Flask instrumentation automatically creates spans for each HTTP request. Custom spans track specific operations (like hash generation).
+- **Logs**: A logging handler captures all Python `logger.*()` calls and converts them to OpenTelemetry log records.
+- **Application Metrics**: The Flask instrumentation tracks HTTP request counts, durations, and status codes.
+- **Runtime Metrics**: Instrumentation periodically samples the Python interpreter for process stats (CPU usage, memory consumption, garbage collection activity, thread counts).
+
+**Export to Elastic:**
+All telemetry data flows through OTLP (OpenTelemetry Protocol) exporters that send data directly to Elastic Cloud's managed OTLP endpoint using the credentials in your `.env` file.
+
+**No Separate Collector Required:**
+This app uses the "direct export" pattern - telemetry goes straight from your application to Elastic Cloud. No need to run a separate OpenTelemetry Collector process on your machine.
+
 ## Viewing Observability Data in Elastic Cloud
 
 1. Log in to your Elastic Cloud Observability instance

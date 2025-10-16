@@ -10,18 +10,26 @@ import os
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
-from opentelemetry import trace
+from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider  # type: ignore[import-not-found]
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler  # type: ignore[import-not-found]
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor  # type: ignore[import-not-found]
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter  # type: ignore[import-not-found]
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 
 # Load environment variables from .env file
 dotenv_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=dotenv_path)
 
-# Configure logging
+# Configure logging (will be connected to OpenTelemetry below)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -40,29 +48,57 @@ if otel_resource_attrs:
 
 # Configure OpenTelemetry
 resource = Resource.create(resource_attributes)
+
+# Configure Trace Provider
 trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer_provider = trace.get_tracer_provider()
 
-# Configure OTLP exporter - it will automatically use these environment variables:
+# Configure Logger Provider
+logger_provider = LoggerProvider(resource=resource)
+set_logger_provider(logger_provider)
+
+# Configure OTLP exporters - they will automatically use these environment variables:
 # - OTEL_EXPORTER_OTLP_ENDPOINT
 # - OTEL_EXPORTER_OTLP_HEADERS
 otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 if otel_endpoint:
-    logger.info(f"Configuring OTLP exporter with endpoint: {otel_endpoint}")
-    # The OTLPSpanExporter will automatically read OTEL_EXPORTER_OTLP_ENDPOINT
-    # and OTEL_EXPORTER_OTLP_HEADERS from environment variables
-    otlp_exporter = OTLPSpanExporter()
-    span_processor = BatchSpanProcessor(otlp_exporter)
+    logger.info(f"Configuring OTLP exporters with endpoint: {otel_endpoint}")
+
+    # Configure trace exporter
+    otlp_trace_exporter = OTLPSpanExporter()
+    span_processor = BatchSpanProcessor(otlp_trace_exporter)
     tracer_provider.add_span_processor(span_processor)
+
+    # Configure log exporter
+    otlp_log_exporter = OTLPLogExporter()
+    log_processor = BatchLogRecordProcessor(otlp_log_exporter)
+    logger_provider.add_log_record_processor(log_processor)
+
+    # Attach OpenTelemetry handler to Python logging
+    handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
+    logging.getLogger().addHandler(handler)
+
+    # Configure metric exporter
+    metric_exporter = OTLPMetricExporter()
+    metric_reader = PeriodicExportingMetricReader(
+        metric_exporter, export_interval_millis=60000  # Export every 60 seconds
+    )
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metrics.set_meter_provider(meter_provider)
 else:
     logger.warning(
         "OTEL_EXPORTER_OTLP_ENDPOINT not configured. "
-        "OpenTelemetry traces will not be exported. "
+        "OpenTelemetry traces and logs will not be exported. "
         "Please configure OTEL environment variables in your .env file."
     )
 
-# Instrument Flask app
+# Instrument Flask app (must be done after MeterProvider is configured)
 FlaskInstrumentor().instrument_app(app)
+
+# Instrument system/runtime metrics (CPU, memory, etc.)
+# Only instrument if we have a configured endpoint
+if otel_endpoint:
+    SystemMetricsInstrumentor().instrument()
 
 # Get tracer
 tracer = trace.get_tracer(__name__)
@@ -88,7 +124,8 @@ def generate_hash():
         input_text = data.get("text", "")
 
         span.set_attribute("input.length", len(input_text))
-        logger.info(f"Generating hash for input of length {len(input_text)}")
+        masked_input = "*" * len(input_text)
+        logger.info(f"Generating hash for input: {masked_input} (length: {len(input_text)})")
 
         # Generate SHA256 hash
         hash_object = hashlib.sha256(input_text.encode())
