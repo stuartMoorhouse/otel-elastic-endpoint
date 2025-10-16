@@ -1,107 +1,122 @@
-# Claude Code Python Project Documentation
+# CLAUDE.md
 
-This document provides context and guidelines for Claude when working on this Python project.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This is a Python project template for Claude Code that includes security best practices, automated formatting, and pre-commit hooks.
+A Flask web application that generates SHA256 hashes from user input, instrumented with the Elastic Distribution of OpenTelemetry Collector (EDOT) to send observability data to Elastic Cloud Managed OTLP Endpoint.
 
-## Project Structure
+## Architecture
 
-- `src/` - Main source code directory
-- `tests/` - Test files
-- `docs/` - Documentation
-- `.claude/` - Claude Code configuration and hooks
-- `.github/` - GitHub-specific configurations
-- `pyproject.toml` - Python project configuration and dependencies
+### Application Components
+- **Flask Web Application**: Simple web form (Bootstrap CSS) that accepts string input and returns SHA256 hash
+- **OpenTelemetry Instrumentation**: Application is instrumented using EDOT to capture traces, logs, and metrics
+- **OTLP Exporter**: Configured to send telemetry data to Elastic Cloud Managed OTLP Endpoint
 
-## Development Guidelines
+### OpenTelemetry Configuration
+The application uses the Elastic Distribution of OpenTelemetry Collector with:
+- OTLP exporter configured to send data to Elastic Cloud endpoint
+- Authorization via Elastic API key
+- Configuration file: `otel.yml` (generated from template in `otel_samples/managed_otlp/logs_metrics_traces.yml`)
 
-### Code Style
-- Follow PEP 8 conventions
-- Use Black for code formatting (88 character line length)
-- Use isort for import sorting
-- Use type hints for all functions
-- Docstrings for all public functions and classes
+## Development Commands
 
-### Security Practices
-- Never hardcode secrets or credentials
-- Use environment variables for sensitive data
-- Validate all user inputs
-- Follow OWASP security guidelines
-- Use Bandit and Safety for security scanning
+### Setup
+```bash
+# Create virtual environment
+uv venv
 
-### Testing
-- Write tests for all new features
-- Maintain test coverage above 80%
-- Use pytest for testing
-- Run tests before committing: `uv run pytest`
+# Install dependencies
+uv pip install -e ".[dev]"
 
-### Package Management
-- This project uses UV for Python package management
-- Dependencies are defined in `pyproject.toml`
-- Install dependencies with: `uv pip install -e ".[dev]"`
+# Install pre-commit hooks
+pre-commit install
+```
 
-## Available Commands
-
-### UV Commands
-- `uv venv` - Create virtual environment
-- `uv pip install -e ".[dev]"` - Install all dependencies
-- `uv run pytest` - Run tests
-- `uv run black src/` - Format code
-- `uv run ruff check src/` - Lint code
-- `uv run mypy src/` - Type check code
+### Running the Application
+```bash
+# Run Flask app locally
+python src/app.py
+# or
+flask run
+```
 
 ### Testing & Quality
-- `uv run pytest` - Run all tests
-- `uv run pytest --cov=src` - Run tests with coverage
-- `uv run black --check src/` - Check formatting
-- `uv run isort --check-only src/` - Check import sorting
-- `uv run bandit -r src/` - Security scanning
+```bash
+# Run all tests
+uv run pytest
 
-## Custom Claude Commands
+# Run tests with coverage
+uv run pytest --cov=src
 
-- `/security-review` - Perform comprehensive security analysis
-- `/fix-github-issue <number>` - Automatically fix a GitHub issue
+# Format code
+uv run black src/
 
-## Environment Variables
+# Check formatting
+uv run black --check src/
 
-Create a `.env` file with:
+# Lint code
+uv run ruff check src/
+
+# Type checking
+uv run mypy src/
+
+# Security scanning
+uv run bandit -r src/
 ```
-# Add your environment variables here
-API_KEY=your_api_key_here
-DATABASE_URL=your_database_url_here
+
+## OpenTelemetry Configuration
+
+### Setting Up OTLP Exporter
+Configure environment variables for Elastic Cloud connection:
+```bash
+ELASTIC_OTLP_ENDPOINT=<ELASTIC_OTLP_ENDPOINT>
+ELASTIC_API_KEY=<ELASTIC_API_KEY>
 ```
 
-## Common Tasks
+### Generating otel.yml Configuration
+```bash
+cp ./otel_samples/managed_otlp/logs_metrics_traces.yml ./otel.yml
+mkdir -p ./data/otelcol
+sed -i "s#\${env:STORAGE_DIR}#${PWD}/data/otelcol#g" ./otel.yml
+sed -i "s#\${env:ELASTIC_OTLP_ENDPOINT}#${ELASTIC_OTLP_ENDPOINT}#g" ./otel.yml
+sed -i "s#\${env:ELASTIC_API_KEY}#${ELASTIC_API_KEY}#g" ./otel.yml
+```
 
-### Adding a New Feature
-1. Create a feature branch
-2. Implement the feature with tests
-3. Run formatting: `uv run black src/`
-4. Run linting: `uv run ruff check src/`
-5. Run tests: `uv run pytest`
-6. Create a pull request
+### Running the OTLP Collector
+```bash
+sudo ./otelcol --config otel.yml
+```
 
-### Setting Up Development Environment
-1. Install UV: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. Create virtual environment: `uv venv`
-3. Install dependencies: `uv pip install -e ".[dev]"`
-4. Install pre-commit hooks: `pre-commit install`
+### OTLP Exporter Configuration Format
+The exporter in `otel.yml` should be configured as:
+```yaml
+exporters:
+  otlp:
+    endpoint: https://<motlp-endpoint>
+    headers:
+      Authorization: ApiKey <your-api-key>
+```
 
-### Debugging
-1. Check logs in `.claude/logs/`
-2. Use debugger with `breakpoint()` (Python 3.7+)
-3. Remove all debug code before committing
+## Demo Flow
 
-## Project Initialization
+The intended demonstration sequence:
+1. Show the Flask app running locally
+2. Create Elastic Serverless Observability instance (out of scope for this code)
+3. Retrieve ELASTIC_OTLP_ENDPOINT and ELASTIC_API_KEY from Elastic Cloud
+4. Configure OTLP shipper with the endpoint and API key
+5. Use the app to generate hash requests (generates observability data)
+6. View traces, logs, and metrics in Elastic Cloud Observability
 
-When initializing this project with /init, refer to product-requirement-prompts.md for the specific requirements and success criteria. This file contains all the necessary context for generating the initial project structure and implementation.
+## Key Documentation References
 
-## Important Notes
+- Elastic Cloud Managed OTLP Endpoint: https://www.elastic.co/docs/solutions/observability/get-started/quickstart-elastic-cloud-otel-endpoint
+- EDOT Instrumentation for Hosts/VMs: https://www.elastic.co/docs/solutions/observability/get-started/opentelemetry/quickstart/serverless/hosts_vms
 
-- Always check for existing implementations before creating new files
-- Follow the principle of least privilege for file permissions
-- Keep dependencies up to date with `uv pip install --upgrade`
-- Document any complex logic or business rules
-- Use type hints to improve code clarity and catch errors early
+## Project Structure Notes
+
+- Application code will be in `src/`
+- Tests will be in `tests/`
+- OpenTelemetry configuration will be in `otel.yml` (generated from template)
+- OTLP Collector data stored in `./data/otelcol/`
+- Pre-commit hooks configured for security scanning (bandit, detect-secrets) and code formatting (black)
