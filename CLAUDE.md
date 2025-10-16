@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Flask web application that generates SHA256 hashes from user input, instrumented with the Elastic Distribution of OpenTelemetry Collector (EDOT) to send observability data to Elastic Cloud Managed OTLP Endpoint.
+A Flask web application that generates SHA256 hashes from user input, instrumented with OpenTelemetry to send observability data directly to Elastic Cloud Managed OTLP Endpoint using the direct export pattern.
 
 ## Architecture
 
 ### Application Components
 - **Flask Web Application**: Simple web form (Bootstrap CSS) that accepts string input and returns SHA256 hash
-- **OpenTelemetry Instrumentation**: Application is instrumented using EDOT to capture traces, logs, and metrics
-- **OTLP Exporter**: Configured to send telemetry data to Elastic Cloud Managed OTLP Endpoint
+- **OpenTelemetry Instrumentation**: Application is instrumented to capture traces, logs, and metrics
+- **In-Process OTLP Exporters**: Direct export from the Flask application to Elastic Cloud (no separate collector required)
 
-### OpenTelemetry Configuration
-The application uses the Elastic Distribution of OpenTelemetry Collector with:
-- OTLP exporter configured to send data to Elastic Cloud endpoint
-- Authorization via Elastic API key
-- Configuration file: `otel.yml` (generated from template in `otel_samples/managed_otlp/logs_metrics_traces.yml`)
+### OpenTelemetry Direct Export Pattern
+The application uses in-process OTLP exporters:
+- **OTLPSpanExporter**: Sends traces directly to Elastic Cloud
+- **OTLPLogExporter**: Sends logs directly to Elastic Cloud
+- **OTLPMetricExporter**: Sends metrics directly to Elastic Cloud
+- **Configuration**: Uses standard OpenTelemetry environment variables (see Configuration section below)
+- **No Collector**: Telemetry data flows directly from the Flask app to Elastic Cloud without a separate OpenTelemetry Collector process
 
 ## Development Commands
 
@@ -67,46 +69,42 @@ uv run bandit -r src/
 
 ## OpenTelemetry Configuration
 
-### Setting Up OTLP Exporter
-Configure environment variables for Elastic Cloud connection:
+### Environment Variables
+The application uses standard OpenTelemetry environment variables configured in the `.env` file. These values are provided by Elastic Cloud UI when you navigate to **Add data** → **Application** → **OpenTelemetry** → **Managed OTLP Endpoint**.
+
+Copy `.env.example` to `.env` and configure the following three variables:
+
 ```bash
-ELASTIC_OTLP_ENDPOINT=<ELASTIC_OTLP_ENDPOINT>
-ELASTIC_API_KEY=<ELASTIC_API_KEY>
+# The Elastic Cloud OTLP endpoint URL
+OTEL_EXPORTER_OTLP_ENDPOINT=https://xxxxx.ingest.us-east-1.aws.elastic.cloud:443
+
+# Authorization header with embedded API key
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey xxxxx
+
+# Service resource attributes (optional but recommended)
+OTEL_RESOURCE_ATTRIBUTES=service.name=flask-sha256-hasher,service.version=1.0.0,deployment.environment=production
 ```
 
-### Generating otel.yml Configuration
-```bash
-cp ./otel_samples/managed_otlp/logs_metrics_traces.yml ./otel.yml
-mkdir -p ./data/otelcol
-sed -i "s#\${env:STORAGE_DIR}#${PWD}/data/otelcol#g" ./otel.yml
-sed -i "s#\${env:ELASTIC_OTLP_ENDPOINT}#${ELASTIC_OTLP_ENDPOINT}#g" ./otel.yml
-sed -i "s#\${env:ELASTIC_API_KEY}#${ELASTIC_API_KEY}#g" ./otel.yml
-```
-
-### Running the OTLP Collector
-```bash
-sudo ./otelcol --config otel.yml
-```
-
-### OTLP Exporter Configuration Format
-The exporter in `otel.yml` should be configured as:
-```yaml
-exporters:
-  otlp:
-    endpoint: https://<motlp-endpoint>
-    headers:
-      Authorization: ApiKey <your-api-key>
-```
+### How It Works
+The application automatically configures OTLP exporters using these environment variables:
+- **src/app.py:63-96**: Reads `OTEL_EXPORTER_OTLP_ENDPOINT` and configures exporters
+- **In-process exporters**: `OTLPSpanExporter()`, `OTLPLogExporter()`, and `OTLPMetricExporter()` automatically use the environment variables
+- **Direct export**: All telemetry data is sent directly from the Flask process to Elastic Cloud
+- **Graceful degradation**: If environment variables are not set, the app runs without exporting telemetry (demo mode)
 
 ## Demo Flow
 
 The intended demonstration sequence:
-1. Show the Flask app running locally
+1. Show the Flask app running locally (demo mode without telemetry)
 2. Create Elastic Serverless Observability instance (out of scope for this code)
-3. Retrieve ELASTIC_OTLP_ENDPOINT and ELASTIC_API_KEY from Elastic Cloud
-4. Configure OTLP shipper with the endpoint and API key
-5. Use the app to generate hash requests (generates observability data)
-6. View traces, logs, and metrics in Elastic Cloud Observability
+3. Retrieve the three OpenTelemetry environment variables from Elastic Cloud UI:
+   - `OTEL_EXPORTER_OTLP_ENDPOINT`
+   - `OTEL_EXPORTER_OTLP_HEADERS`
+   - `OTEL_RESOURCE_ATTRIBUTES`
+4. Configure the application by pasting these values into the `.env` file
+5. Restart the Flask app (now sending telemetry directly to Elastic Cloud)
+6. Use the app to generate hash requests (generates observability data)
+7. View traces, logs, and metrics in Elastic Cloud Observability
 
 ## Key Documentation References
 
@@ -115,8 +113,9 @@ The intended demonstration sequence:
 
 ## Project Structure Notes
 
-- Application code will be in `src/`
-- Tests will be in `tests/`
-- OpenTelemetry configuration will be in `otel.yml` (generated from template)
-- OTLP Collector data stored in `./data/otelcol/`
+- Application code is in `src/` (main application in `src/app.py`)
+- Tests are in `tests/`
+- OpenTelemetry configuration is via environment variables in `.env` file
+- Web UI templates are in `src/templates/`
 - Pre-commit hooks configured for security scanning (bandit, detect-secrets) and code formatting (black)
+- No separate collector process or configuration files needed

@@ -6,11 +6,11 @@ This file contains the requirements for your project. Fill out each section with
 
 ```
 # What is the main goal of this project? Be specific and concise.
-Build a simple Flask application to return a SHA256 hash from a string provided by entering the string into a web form. 
+Build a simple Flask application to return a SHA256 hash from a string provided by entering the string into a web form.
 
-The web form should be simple and styled with Bootstrap CSS. 
+The web form should be simple and styled with Bootstrap CSS.
 
-The application should be instrumented by the Elastic Otel Collector
+The application should be instrumented with OpenTelemetry to send data directly to Elastic Cloud.
 
 
 
@@ -22,7 +22,7 @@ The application should be instrumented by the Elastic Otel Collector
 # Describe what the project should do in detail. List key features and functionality.
 Locally running Flask app
 The HTML served by the Flask app should use Twitter Bootstrap CSS
-The Flask app will be instrumented via the Elastic OTEL Collector (EDOT).
+The Flask app will be instrumented with OpenTelemetry using in-process OTLP exporters for direct export to Elastic Cloud.
 
 
 
@@ -43,26 +43,20 @@ To demonstrate the Elastic Serverless OTEL endpoint
 
 ```
 # Define measurable success metrics and acceptance criteria.
-OTEL data from the app can be send into an Elastic Serverless Observability cluster via the Elastic Cloud Managed OTLP Endpoint endpoint
+OTEL data from the app can be sent into an Elastic Serverless Observability cluster via the Elastic Cloud Managed OTLP Endpoint
 
 I want to do a demo with these steps:
 
-Show the Flask App
-Create the Elastic Serverless Observability instance
-Set up the Elastic Serverless Observability instance to receive data (
-retrieve the values to fill in this config: 
-ELASTIC_OTLP_ENDPOINT=<ELASTIC_OTLP_ENDPOINT> && \
-ELASTIC_API_KEY=<ELASTIC_API_KEY> && \
-cp ./otel_samples/managed_otlp/logs_metrics_traces.yml ./otel.yml && \
-mkdir -p ./data/otelcol && \
-sed -i "s#\${env:STORAGE_DIR}#${PWD}/data/otelcol#g" ./otel.yml && \
-sed -i "s#\${env:ELASTIC_OTLP_ENDPOINT}#${ELASTIC_OTLP_ENDPOINT}#g" ./otel.yml && \
-sed -i "s#\${env:ELASTIC_API_KEY}#${ELASTIC_API_KEY}#g" ./otel.yml
-)
-Configure the OTLP shipper to use the 
-Elastic Cloud Managed OTLP Endpoint
-Use the app a few time to generate data
-See the Observability data in Elastic Cloud
+1. Show the Flask App running locally (demo mode without telemetry)
+2. Create the Elastic Serverless Observability instance
+3. Retrieve the three OpenTelemetry environment variables from Elastic Cloud UI:
+   - OTEL_EXPORTER_OTLP_ENDPOINT
+   - OTEL_EXPORTER_OTLP_HEADERS (includes the API key)
+   - OTEL_RESOURCE_ATTRIBUTES
+4. Copy .env.example to .env and paste the three values from Elastic Cloud
+5. Restart the Flask app (now sending telemetry directly to Elastic Cloud)
+6. Use the app a few times to generate observability data
+7. See the traces, logs, and metrics in Elastic Cloud Observability
 
 ```
 
@@ -79,39 +73,32 @@ Creating the Elastic Cloud Serverless Observability instance is not in scope for
 ## Documentation and references (Optional)
 
 ```
-###
-OLTP shipper: 
+### Elastic Cloud Managed OTLP Endpoint
 
- Configure your OTLP shipper
+This project uses the direct export pattern where OpenTelemetry data is sent directly from the application to Elastic Cloud without a separate collector.
 
-The final step is to configure your Collector or SDK to use the Elastic Cloud Managed OTLP Endpoint endpoint and your Elastic API key to send data to Elastic Cloud.
-OpenTelemetry Collector example
+Configuration is done via standard OpenTelemetry environment variables:
+- OTEL_EXPORTER_OTLP_ENDPOINT: The Elastic Cloud OTLP endpoint URL
+- OTEL_EXPORTER_OTLP_HEADERS: Authorization header with embedded API key
+- OTEL_RESOURCE_ATTRIBUTES: Service metadata (optional but recommended)
 
-To send data to the Elastic Cloud Managed OTLP Endpoint from the Elastic Distribution of OpenTelemetry Collector or the contrib Collector, configure the otlp exporter:
+These values are provided by Elastic Cloud when you navigate to:
+Add data → Application → OpenTelemetry → Managed OTLP Endpoint
 
-exporters:
-  otlp:
-    endpoint: https://<motlp-endpoint>
-    headers:
-      Authorization: ApiKey <your-api-key>
-		
-
-Set the API key as an environment variable or directly in the configuration as shown in the example.
-
+Documentation:
 https://www.elastic.co/docs/solutions/observability/get-started/quickstart-elastic-cloud-otel-endpoint
 ```
 
-### Instrumenting the application with EDOT
+### Instrumenting the application with OpenTelemetry
 ```
+The Flask application uses in-process OTLP exporters:
+- OTLPSpanExporter for traces
+- OTLPLogExporter for logs
+- OTLPMetricExporter for metrics
+
+All exporters automatically use the standard OTEL environment variables for configuration.
+
+Documentation:
 https://www.elastic.co/docs/solutions/observability/get-started/opentelemetry/quickstart/serverless/hosts_vms
-
-ELASTIC_OTLP_ENDPOINT=<ELASTIC_OTLP_ENDPOINT> && \
-ELASTIC_API_KEY=<ELASTIC_API_KEY> && \
-cp ./otel_samples/managed_otlp/logs_metrics_traces.yml ./otel.yml && \
-mkdir -p ./data/otelcol && \
-sed -i "s#\${env:STORAGE_DIR}#${PWD}/data/otelcol#g" ./otel.yml && \
-sed -i "s#\${env:ELASTIC_OTLP_ENDPOINT}#${ELASTIC_OTLP_ENDPOINT}#g" ./otel.yml && \
-sed -i "s#\${env:ELASTIC_API_KEY}#${ELASTIC_API_KEY}#g" ./otel.yml
-
-sudo ./otelcol --config otel.yml
+https://opentelemetry.io/docs/instrumentation/python/
 ```
